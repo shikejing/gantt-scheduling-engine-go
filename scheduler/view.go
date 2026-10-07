@@ -16,14 +16,14 @@ type ViewQuery struct {
 
 // ViewRow 甘特视图中的一行（一个任务条）。
 type ViewRow struct {
-	TaskID   string
-	Name     string
-	Start    time.Time
-	Finish   time.Time
-	Critical bool
-	Delayed  bool
-	Pinned   bool
-	Resources []string
+	TaskID          string
+	Name            string
+	Start           time.Time
+	Finish          time.Time
+	Critical        bool
+	Delayed         bool
+	Pinned          bool
+	Resources       []string
 	PercentComplete float64
 }
 

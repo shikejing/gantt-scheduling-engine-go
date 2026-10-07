@@ -20,14 +20,14 @@ type Baseline struct {
 
 // TaskVariance 单个任务相对基线的偏移。
 type TaskVariance struct {
-	TaskID       string
+	TaskID         string
 	StartVariance  time.Duration // 计划开始 - 基线开始
 	FinishVariance time.Duration // 计划完成 - 基线完成
 }
 
 // VarianceReport 偏差报告：逐任务偏移 + 偏差最大的任务列表。
 type VarianceReport struct {
-	Tasks       map[string]TaskVariance
+	Tasks        map[string]TaskVariance
 	MostDeviated []string // 按 |FinishVariance| 降序，并列按 ID 升序
 }
 

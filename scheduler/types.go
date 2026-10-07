@@ -136,26 +136,26 @@ type DelayReason struct {
 
 // TaskResult 单个任务的排期结果。
 type TaskResult struct {
-	TaskID      string
-	Start       time.Time // 调平后的计划开始
-	Finish      time.Time
-	EarlyStart  time.Time // CPM 最早开始
-	EarlyFinish time.Time
-	LateStart   time.Time // CPM 尽晚开始
-	LateFinish  time.Time
-	TotalFloat  time.Duration // 总浮动（工作时间），可为负
-	Critical    bool // 总浮动为零
-	NegativeFloat bool // 总浮动为负（约束冲突），显式标出不归零
-	Delayed     bool
-	DelayReasons []DelayReason
+	TaskID        string
+	Start         time.Time // 调平后的计划开始
+	Finish        time.Time
+	EarlyStart    time.Time // CPM 最早开始
+	EarlyFinish   time.Time
+	LateStart     time.Time // CPM 尽晚开始
+	LateFinish    time.Time
+	TotalFloat    time.Duration // 总浮动（工作时间），可为负
+	Critical      bool          // 总浮动为零
+	NegativeFloat bool          // 总浮动为负（约束冲突），显式标出不归零
+	Delayed       bool
+	DelayReasons  []DelayReason
 }
 
 // Result 一次完整排期结果，不可变。
 type Result struct {
-	Tasks          map[string]*TaskResult
-	CriticalPath   []string
-	ProjectStart   time.Time
-	ProjectFinish  time.Time
+	Tasks         map[string]*TaskResult
+	CriticalPath  []string
+	ProjectStart  time.Time
+	ProjectFinish time.Time
 	// cpmFinish 未调平网络的最大最早完成，供增量重算判断尽晚时间是否失效。
 	cpmFinish time.Time
 }
