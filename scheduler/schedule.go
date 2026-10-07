@@ -142,9 +142,13 @@ func depLateCap(cal WorkCalendar, dep Dependency, succLS, succLF time.Time, pred
 	}
 }
 
-// forwardPass 计算所有任务的最早开始/完成（含约束，不含资源调平）。
-func (c *scheduleContext) forwardPass() {
+// forwardPass 计算任务的最早开始/完成（含约束，不含资源调平）。
+// dirty 非空时只重算脏集中的任务，其余复用 ctx.res 中已有值。
+func (c *scheduleContext) forwardPass(dirty map[string]bool) {
 	for _, id := range c.order {
+		if dirty != nil && !dirty[id] {
+			continue
+		}
 		t := c.in.Tasks[id]
 		cal := c.effectiveCalendar(t)
 		r := c.res[id]
@@ -183,10 +187,14 @@ func (c *scheduleContext) forwardPass() {
 	}
 }
 
-// backwardPass 计算尽晚开始/完成与总浮动、关键路径（基于未调平的 CPM 网络）。
-func (c *scheduleContext) backwardPass() {
+// backwardPass 计算尽晚开始/完成与总浮动（基于未调平的 CPM 网络）。
+// dirty 非空时只重算脏集中的任务。
+func (c *scheduleContext) backwardPass(dirty map[string]bool) {
 	for i := len(c.order) - 1; i >= 0; i-- {
 		id := c.order[i]
+		if dirty != nil && !dirty[id] {
+			continue
+		}
 		t := c.in.Tasks[id]
 		cal := c.effectiveCalendar(t)
 		r := c.res[id]
@@ -234,8 +242,8 @@ func (c *scheduleContext) adjustALAP() {
 	if !has {
 		return
 	}
-	c.forwardPass()
-	c.backwardPass()
+	c.forwardPass(nil)
+	c.backwardPass(nil)
 }
 
 // Schedule 对输入做全量排期：环路检测 -> CPM -> 资源调平 -> 浮动与关键路径。
@@ -262,8 +270,8 @@ func Schedule(in *Input) (*Result, error) {
 			return nil, &ValidationError{Detail: "task " + id + " has no working time within 10 years of ProjectStart in the intersection of its calendars"}
 		}
 	}
-	ctx.forwardPass()
-	ctx.backwardPass()
+	ctx.forwardPass(nil)
+	ctx.backwardPass(nil)
 	ctx.adjustALAP()
 	levelResources(ctx)
 	return &Result{
@@ -271,6 +279,7 @@ func Schedule(in *Input) (*Result, error) {
 		CriticalPath:  criticalPath(ctx),
 		ProjectStart:  in.ProjectStart,
 		ProjectFinish: projectFinish(ctx),
+		cpmFinish:     ctx.cpmFinish,
 	}, nil
 }
 

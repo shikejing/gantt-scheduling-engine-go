@@ -259,3 +259,22 @@ func (c *Calendar) WorkBetween(a, b time.Time) time.Duration {
 	}
 	return total
 }
+
+// Clone 深拷贝日历（map 与切片字段独立）。
+func (c *Calendar) Clone() *Calendar {
+	cp := *c
+	if c.WorkDays != nil {
+		cp.WorkDays = map[time.Weekday]bool{}
+		for k, v := range c.WorkDays {
+			cp.WorkDays[k] = v
+		}
+	}
+	if c.Holidays != nil {
+		cp.Holidays = map[string]bool{}
+		for k, v := range c.Holidays {
+			cp.Holidays[k] = v
+		}
+	}
+	cp.Daily = append([]WorkInterval(nil), c.Daily...)
+	return &cp
+}

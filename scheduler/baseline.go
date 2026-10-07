@@ -1,6 +1,9 @@
 package scheduler
 
-import "time"
+import (
+	"sort"
+	"time"
+)
 
 // BaselineTask 基线中单个任务的时间快照。
 type BaselineTask struct {
@@ -43,4 +46,40 @@ func (p *Plan) SetBaseline(name string) *Version {
 }
 
 // Variance 计算当前版本相对基线的偏移报告。无基线时返回 nil。
-func (v *Version) Variance() *VarianceReport { return nil }
+// 偏差最大的任务按 |完成偏移| 降序、并列按任务 ID 升序排列，输出确定。
+func (v *Version) Variance() *VarianceReport {
+	if v.Baseline == nil {
+		return nil
+	}
+	rep := &VarianceReport{Tasks: map[string]TaskVariance{}}
+	for id, bt := range v.Baseline.Tasks {
+		cur, ok := v.Result.Tasks[id]
+		if !ok {
+			continue
+		}
+		rep.Tasks[id] = TaskVariance{
+			TaskID:         id,
+			StartVariance:  cur.Start.Sub(bt.Start),
+			FinishVariance: cur.Finish.Sub(bt.Finish),
+		}
+	}
+	ids := make([]string, 0, len(rep.Tasks))
+	for id := range rep.Tasks {
+		ids = append(ids, id)
+	}
+	abs := func(d time.Duration) time.Duration {
+		if d < 0 {
+			return -d
+		}
+		return d
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		ai, aj := abs(rep.Tasks[ids[i]].FinishVariance), abs(rep.Tasks[ids[j]].FinishVariance)
+		if ai != aj {
+			return ai > aj
+		}
+		return ids[i] < ids[j]
+	})
+	rep.MostDeviated = ids
+	return rep
+}

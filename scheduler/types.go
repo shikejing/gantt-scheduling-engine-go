@@ -156,6 +156,8 @@ type Result struct {
 	CriticalPath   []string
 	ProjectStart   time.Time
 	ProjectFinish  time.Time
+	// cpmFinish 未调平网络的最大最早完成，供增量重算判断尽晚时间是否失效。
+	cpmFinish time.Time
 }
 
 // CycleError 依赖图存在环路，排期被拒绝。
@@ -174,4 +176,12 @@ type ValidationError struct {
 
 func (e *ValidationError) Error() string {
 	return "scheduler: invalid input: " + e.Detail
+}
+
+// Clone 深拷贝任务（切片字段独立），保证已提交版本不可变。
+func (t *Task) Clone() *Task {
+	cp := *t
+	cp.Predecessors = append([]Dependency(nil), t.Predecessors...)
+	cp.Resources = append([]ResourceAssignment(nil), t.Resources...)
+	return &cp
 }
