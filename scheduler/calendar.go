@@ -181,11 +181,15 @@ func (c *Calendar) AddWork(start time.Time, d time.Duration) time.Time {
 	if d >= 0 {
 		t := c.NextWorkStart(start)
 		remaining := d
-		for remaining > 0 {
+		for i := 0; i < maxScanDays*4 && remaining > 0; i++ {
 			iv, ok := c.intervalContaining(t)
 			if !ok {
-				// NextWorkStart 保证落在工作时刻；防御性兜底。
-				t = c.NextWorkStart(t.Add(time.Nanosecond))
+				// 日历在扫描视界内无工作时刻：停止避免死循环。
+				next := c.NextWorkStart(t.Add(time.Nanosecond))
+				if !next.After(t) {
+					break
+				}
+				t = next
 				continue
 			}
 			avail := iv.End.Sub(t)
@@ -193,16 +197,24 @@ func (c *Calendar) AddWork(start time.Time, d time.Duration) time.Time {
 				return t.Add(remaining)
 			}
 			remaining -= avail
-			t = c.NextWorkStart(iv.End.Add(time.Nanosecond))
+			next := c.NextWorkStart(iv.End.Add(time.Nanosecond))
+			if !next.After(iv.End) {
+				break
+			}
+			t = next
 		}
 		return t
 	}
 	t := c.FloorToWork(start)
 	remaining := -d
-	for remaining > 0 {
+	for i := 0; i < maxScanDays*4 && remaining > 0; i++ {
 		iv, ok := c.intervalEndingAt(t)
 		if !ok {
-			t = c.FloorToWork(t.Add(-time.Nanosecond))
+			next := c.FloorToWork(t.Add(-time.Nanosecond))
+			if !next.Before(t) {
+				break
+			}
+			t = next
 			continue
 		}
 		avail := t.Sub(iv.Start)
@@ -210,7 +222,11 @@ func (c *Calendar) AddWork(start time.Time, d time.Duration) time.Time {
 			return t.Add(-remaining)
 		}
 		remaining -= avail
-		t = c.FloorToWork(iv.Start)
+		next := c.FloorToWork(iv.Start)
+		if !next.Before(iv.Start) {
+			break
+		}
+		t = next
 	}
 	return t
 }

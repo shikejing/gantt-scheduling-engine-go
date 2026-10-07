@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -100,5 +101,67 @@ func TestAddWorkNegative(t *testing.T) {
 	want := time.Date(2025, 3, 3, 15, 0, 0, 0, time.UTC)
 	if !got.Equal(want) {
 		t.Fatalf("AddWork(-4h) = %v, want %v", got, want)
+	}
+}
+
+func TestCrossTimezoneResourceIntersection(t *testing.T) {
+	ny := &Calendar{ID: "ny", Location: mustLoc(t, "America/New_York")}
+	sh := &Calendar{ID: "sh", Location: mustLoc(t, "Asia/Shanghai")}
+	in := &Input{
+		Tasks: map[string]*Task{
+			"T": {ID: "T", Duration: 4 * time.Hour, CalendarID: "ny",
+				Resources: []ResourceAssignment{{ResourceID: "RSH", Units: 1}}},
+		},
+		Resources: map[string]*Resource{
+			"RSH": {ID: "RSH", Capacity: 1, CalendarID: "sh"},
+		},
+		Calendars:         map[string]*Calendar{"ny": ny, "sh": sh},
+		DefaultCalendarID: "ny",
+		// 纽约周一 9:00 = 上海周一 21:00（上海已下班），共同工作时段是上海白天∩纽约白天。
+		ProjectStart: time.Date(2025, 6, 2, 9, 0, 0, 0, mustLoc(t, "America/New_York")),
+	}
+	// 纽约 9-17 与上海 9-17 在 6 月没有共同工作时段，必须报可区分的校验错误，
+	// 而不是死循环或返回自相矛盾的结果。
+	_, err := Schedule(in)
+	var verr *ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected ValidationError for empty calendar intersection, got %v", err)
+	}
+}
+
+func TestCrossTimezoneOverlapWindow(t *testing.T) {
+	ny := &Calendar{ID: "ny", Location: mustLoc(t, "America/New_York")}
+	sh := &Calendar{ID: "sh", Location: mustLoc(t, "Asia/Shanghai"),
+		Daily: []WorkInterval{{Start: ClockTime{8, 0}, End: ClockTime{12, 0}}}}
+	// 上海 8:00-12:00 = 纽约 20:00-24:00（前一日，EDT）。纽约日历 9-17 仍无交集。
+	// 让纽约资源加班：纽约 20:00-23:00。
+	ny.Daily = []WorkInterval{{Start: ClockTime{20, 0}, End: ClockTime{23, 0}}}
+	in := &Input{
+		Tasks: map[string]*Task{
+			"T": {ID: "T", Duration: 2 * time.Hour, CalendarID: "ny",
+				Resources: []ResourceAssignment{{ResourceID: "RSH", Units: 1}}},
+		},
+		Resources:         map[string]*Resource{"RSH": {ID: "RSH", Capacity: 1, CalendarID: "sh"}},
+		Calendars:         map[string]*Calendar{"ny": ny, "sh": sh},
+		DefaultCalendarID: "ny",
+		ProjectStart:      time.Date(2025, 6, 2, 9, 0, 0, 0, mustLoc(t, "America/New_York")),
+	}
+	res, err := Schedule(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := res.Tasks["T"]
+	// 交集：纽约 20:00-23:00 ∩ 上海 8:00-12:00（=纽约 20:00-24:00）= 纽约 20:00-23:00。
+	wantStart := time.Date(2025, 6, 2, 20, 0, 0, 0, mustLoc(t, "America/New_York"))
+	if !tr.Start.Equal(wantStart) {
+		t.Fatalf("T.Start = %v (%v), want %v", tr.Start, tr.Start.In(mustLoc(t, "Asia/Shanghai")), wantStart)
+	}
+	// 同一时刻，两个时区看到的必须是同一 instant。
+	shView := tr.Start.In(mustLoc(t, "Asia/Shanghai"))
+	if shView.Hour() != 8 || shView.Minute() != 0 {
+		t.Fatalf("start in Shanghai = %v, want 08:00", shView)
+	}
+	if got := tr.Finish.Sub(tr.Start); got != 2*time.Hour {
+		t.Fatalf("duration span = %v, want 2h", got)
 	}
 }

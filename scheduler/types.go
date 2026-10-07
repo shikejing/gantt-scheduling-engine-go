@@ -144,7 +144,8 @@ type TaskResult struct {
 	LateStart   time.Time // CPM 尽晚开始
 	LateFinish  time.Time
 	TotalFloat  time.Duration // 总浮动（工作时间），可为负
-	Critical    bool
+	Critical    bool // 总浮动为零
+	NegativeFloat bool // 总浮动为负（约束冲突），显式标出不归零
 	Delayed     bool
 	DelayReasons []DelayReason
 }
