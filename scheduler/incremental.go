@@ -35,8 +35,19 @@ func rescheduleIncremental(old *Version, next *Input, changed map[string]bool) (
 		}
 	}
 
+	// 脏集必须同时在新旧两张依赖图上求闭包：被删除的依赖边在新图上
+	// 已不存在，但旧边上的前驱（尽晚时间失去一个后继上界）与后继
+	// （最早时间失去一个前驱下界）同样受影响。
 	dirtyF := g.descendants(changed)
 	dirtyB := g.ancestors(changed)
+	if gOld, err := buildGraph(old.Input); err == nil {
+		for id := range gOld.descendants(changed) {
+			dirtyF[id] = true
+		}
+		for id := range gOld.ancestors(changed) {
+			dirtyB[id] = true
+		}
+	}
 
 	ctx := &scheduleContext{
 		in: next, graph: g, order: order,
@@ -44,12 +55,18 @@ func rescheduleIncremental(old *Version, next *Input, changed map[string]bool) (
 		alapFloor: map[string]time.Time{},
 		effCal:    map[string]WorkCalendar{},
 	}
-	// 干净任务复用旧结果（结构拷贝，随后调平会重写 Start/Finish）。
+	// 按字段复用旧结果：前向字段（Early*）只在前向干净时复用，
+	// 后向字段（Late*/浮动）只在后向干净时复用；Start/Finish/推迟原因
+	// 由调平阶段统一重写，无需复用。
 	for _, id := range order {
 		r := &TaskResult{TaskID: id}
-		if !dirtyF[id] && !dirtyB[id] {
-			if oldR, ok := old.Result.Tasks[id]; ok {
-				*r = *oldR
+		if oldR, ok := old.Result.Tasks[id]; ok {
+			if !dirtyF[id] {
+				r.EarlyStart, r.EarlyFinish = oldR.EarlyStart, oldR.EarlyFinish
+			}
+			if !dirtyB[id] {
+				r.LateStart, r.LateFinish = oldR.LateStart, oldR.LateFinish
+				r.TotalFloat, r.Critical, r.NegativeFloat = oldR.TotalFloat, oldR.Critical, oldR.NegativeFloat
 			}
 		}
 		ctx.res[id] = r
@@ -79,6 +96,26 @@ func rescheduleIncremental(old *Version, next *Input, changed map[string]bool) (
 		dirtyB = nil // 全量后向
 	}
 	ctx.backwardPass(dirtyB)
+
+	// 浮动同时依赖最早与尽晚时间：仅前向变脏的任务（后向干净、浮动字段
+	// 被复用）需要用新最早时间重算浮动。后向脏集内的任务已在 backwardPass
+	// 中重算；dirtyB == nil 表示全量后向，全部已重算。
+	if dirtyB != nil {
+		for id := range dirtyF {
+			if dirtyB[id] {
+				continue
+			}
+			t, ok := next.Tasks[id]
+			if !ok {
+				continue
+			}
+			r := ctx.res[id]
+			cal := ctx.effectiveCalendar(t)
+			r.TotalFloat = cal.WorkBetween(r.EarlyStart, r.LateStart)
+			r.Critical = r.TotalFloat == 0
+			r.NegativeFloat = r.TotalFloat < 0
+		}
+	}
 
 	levelResources(ctx)
 	return &Result{
